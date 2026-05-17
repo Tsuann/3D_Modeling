@@ -201,6 +201,15 @@ def shadow_mask(image: np.ndarray, background: np.ndarray, shadow_drop: int) -> 
     return (darker & similar_color).astype(np.uint8) * 255
 
 
+def suppress_dark_shadow_regions(image: np.ndarray, mask: np.ndarray, seed: np.ndarray, value_max: int, saturation_max: int) -> np.ndarray:
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    protected = cv2.dilate(seed, np.ones((13, 13), np.uint8), iterations=1) > 0
+    dark_shadow = (hsv[:, :, 2] <= value_max) & (hsv[:, :, 1] <= saturation_max) & ~protected
+    clean = mask.copy()
+    clean[dark_shadow] = 0
+    return clean
+
+
 def foreground_mask(
     image: np.ndarray,
     background: np.ndarray,
@@ -212,6 +221,8 @@ def foreground_mask(
     center_roi_x: float,
     center_roi_y: float,
     roi_mask: np.ndarray | None,
+    shadow_value_max: int,
+    shadow_saturation_max: int,
 ) -> np.ndarray:
     diff = cv2.absdiff(image, background)
     gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
@@ -239,6 +250,7 @@ def foreground_mask(
     else:
         mask = bg_mask
 
+    mask = suppress_dark_shadow_regions(image, mask, seed, shadow_value_max, shadow_saturation_max)
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -248,6 +260,88 @@ def foreground_mask(
         if cv2.contourArea(contour) >= 300:
             cv2.drawContours(clean, [contour], -1, 255, cv2.FILLED)
     return cv2.bitwise_and(clean, roi)
+
+
+def neighbor_count_3d(volume: np.ndarray) -> np.ndarray:
+    padded = np.pad(volume.astype(np.uint8), 1, mode="constant")
+    count = np.zeros_like(volume, dtype=np.uint8)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                if dx == 0 and dy == 0 and dz == 0:
+                    continue
+                count += padded[
+                    1 + dx : 1 + dx + volume.shape[0],
+                    1 + dy : 1 + dy + volume.shape[1],
+                    1 + dz : 1 + dz + volume.shape[2],
+                ]
+    return count
+
+
+def erode3d(volume: np.ndarray, min_neighbors: int = 18) -> np.ndarray:
+    return volume & (neighbor_count_3d(volume) >= min_neighbors)
+
+
+def dilate3d(volume: np.ndarray, min_neighbors: int = 1) -> np.ndarray:
+    return volume | (neighbor_count_3d(volume) >= min_neighbors)
+
+
+def smooth_volume(volume: np.ndarray, iterations: int, open_iterations: int) -> np.ndarray:
+    support = volume.copy()
+    result = volume.copy()
+    for _ in range(open_iterations):
+        result = erode3d(result, min_neighbors=10)
+        result = dilate3d(result, min_neighbors=1) & support
+    for _ in range(iterations):
+        neighbors = neighbor_count_3d(result)
+        result = ((result & (neighbors >= 6)) | (~result & support & (neighbors >= 18))) & support
+    return keep_largest_component(result)
+
+
+def volume_grid(center: np.ndarray, extent: float, resolution: int) -> np.ndarray:
+    axis = np.linspace(-extent / 2, extent / 2, resolution)
+    return np.array(np.meshgrid(axis, axis, axis, indexing="xy")).reshape(3, -1).T + center
+
+
+def points_from_volume(volume: np.ndarray, center: np.ndarray, extent: float, resolution: int) -> np.ndarray:
+    grid = volume_grid(center, extent, resolution)
+    return grid[volume.reshape(-1)]
+
+
+def regularize_shape_volume(volume: np.ndarray, center: np.ndarray, extent: float, resolution: int, mode: str) -> tuple[np.ndarray, str]:
+    if mode == "none" or np.count_nonzero(volume) < 8:
+        return volume, "none"
+    points = points_from_volume(volume, center, extent, resolution)
+    prior = shape_prior(points)
+    selected_mode = mode
+    if mode == "auto":
+        classification = prior.get("classification", "")
+        if classification == "elongated_or_cylindrical":
+            selected_mode = "cylinder"
+        elif classification in {"compact_regular", "relatively_regular"}:
+            selected_mode = "ellipsoid"
+        else:
+            selected_mode = "box"
+
+    pca_center = np.array(prior["center_m"], dtype=np.float64)
+    axes = np.array(prior["principal_axes"], dtype=np.float64)
+    local = (volume_grid(center, extent, resolution) - pca_center) @ axes.T
+    occupied_local = (points - pca_center) @ axes.T
+    half_extents = np.maximum(np.max(np.abs(occupied_local), axis=0), 1e-9)
+
+    if selected_mode == "box":
+        primitive = np.all(np.abs(local) <= half_extents, axis=1)
+    elif selected_mode == "cylinder":
+        radius = float(np.percentile(np.linalg.norm(occupied_local[:, 1:3], axis=1), 82))
+        primitive = (np.abs(local[:, 0]) <= half_extents[0]) & (np.linalg.norm(local[:, 1:3], axis=1) <= radius)
+    else:
+        normalized = local / half_extents
+        primitive = np.sum(normalized * normalized, axis=1) <= 1.0
+
+    regularized = primitive.reshape(volume.shape) & volume
+    if np.count_nonzero(regularized) == 0:
+        return volume, "none_empty_fallback"
+    return keep_largest_component(regularized), selected_mode
 
 
 def mask_centroid(mask: np.ndarray) -> tuple[float, float] | None:
@@ -310,8 +404,7 @@ def carve(
     extent: float,
     resolution: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    axis = np.linspace(-extent / 2, extent / 2, resolution)
-    grid = np.array(np.meshgrid(axis, axis, axis, indexing="xy")).reshape(3, -1).T + center
+    grid = volume_grid(center, extent, resolution)
     keep = np.ones(len(grid), dtype=bool)
     for camera_id in CAMERAS:
         pixels, inside = project_points(grid, cameras[camera_id], masks[camera_id].shape)
@@ -335,8 +428,7 @@ def robust_carve(
     largest_component: bool,
     uncertain_margin: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    axis = np.linspace(-extent / 2, extent / 2, resolution)
-    grid = np.array(np.meshgrid(axis, axis, axis, indexing="xy")).reshape(3, -1).T + center
+    grid = volume_grid(center, extent, resolution)
     votes = np.zeros(len(grid), dtype=np.int16)
     score = np.zeros(len(grid), dtype=np.float32)
 
@@ -527,9 +619,14 @@ def main() -> int:
     parser.add_argument("--largest-component", action="store_true", help="Keep only the largest connected voxel component.")
     parser.add_argument("--suppress-shadows", action="store_true", help="Remove shadow-like darker pixels before silhouette cleanup.")
     parser.add_argument("--shadow-drop", type=int, default=28, help="Minimum value drop used by --suppress-shadows.")
+    parser.add_argument("--shadow-value-max", type=int, default=82, help="Dark low-saturation pixels below this value are removed unless close to the object color seed.")
+    parser.add_argument("--shadow-saturation-max", type=int, default=95, help="Low saturation threshold used by dark shadow cleanup.")
     parser.add_argument("--center-roi-x", type=float, default=1.0, help="Keep only this centered width fraction before mask cleanup.")
     parser.add_argument("--center-roi-y", type=float, default=1.0, help="Keep only this centered height fraction before mask cleanup.")
     parser.add_argument("--roi-config", type=Path, help="Optional per-camera ROI box JSON. Areas outside the box are ignored.")
+    parser.add_argument("--volume-smooth-iterations", type=int, default=0, help="Constrained majority smoothing iterations for the occupied voxel volume.")
+    parser.add_argument("--volume-open-iterations", type=int, default=0, help="Constrained 3D opening iterations to remove isolated voxels and small spikes.")
+    parser.add_argument("--regularize-shape", default="none", choices=("none", "auto", "ellipsoid", "cylinder", "box"), help="Fit a regular primitive and keep only the part inside the visual hull boundary.")
     args = parser.parse_args()
 
     sessions = dataset_sessions(args.dataset_dir)
@@ -553,6 +650,8 @@ def main() -> int:
             args.center_roi_x,
             args.center_roi_y,
             roi_masks[camera_id],
+            args.shadow_value_max,
+            args.shadow_saturation_max,
         )
         for camera_id in CAMERAS
     }
@@ -583,6 +682,19 @@ def main() -> int:
             args.largest_component,
             args.uncertain_margin,
         )
+    raw_point_count = int(len(points))
+    regularized_shape = "none"
+    if args.volume_smooth_iterations > 0 or args.volume_open_iterations > 0:
+        volume = smooth_volume(volume, args.volume_smooth_iterations, args.volume_open_iterations)
+    if args.regularize_shape != "none":
+        volume, regularized_shape = regularize_shape_volume(volume, center, args.extent, args.resolution, args.regularize_shape)
+    if (
+        args.volume_smooth_iterations > 0
+        or args.volume_open_iterations > 0
+        or args.regularize_shape != "none"
+    ):
+        points = points_from_volume(volume, center, args.extent, args.resolution)
+        colors = color_points(points, images, cameras)
     output_ply = args.output_dir / f"{args.session_id}_visual_hull.ply"
     write_ply(output_ply, points, colors)
     write_masks(args.output_dir / "masks", args.session_id, images, masks)
@@ -604,9 +716,16 @@ def main() -> int:
         "largest_component": args.largest_component,
         "suppress_shadows": args.suppress_shadows,
         "shadow_drop": args.shadow_drop,
+        "shadow_value_max": args.shadow_value_max,
+        "shadow_saturation_max": args.shadow_saturation_max,
         "center_roi_x": args.center_roi_x,
         "center_roi_y": args.center_roi_y,
         "roi_config": str(args.roi_config) if args.roi_config else None,
+        "raw_point_count": raw_point_count,
+        "volume_smooth_iterations": args.volume_smooth_iterations,
+        "volume_open_iterations": args.volume_open_iterations,
+        "regularize_shape": args.regularize_shape,
+        "regularized_shape": regularized_shape,
         "fill_ratio": float(np.count_nonzero(volume) / volume.size),
         "mask_pixels": {camera_id: int(np.count_nonzero(mask)) for camera_id, mask in masks.items()},
         "centroids": centroids,

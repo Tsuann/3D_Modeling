@@ -591,6 +591,18 @@ Visual hull update after explicit empty-background capture:
     - 2-of-3 output: `reconstruction/object_retry_001_visual_hull_041_auto_roi_2cam/object_retry_041_visual_hull.viewer.html`, `37817` voxels.
     - 3-of-3 output: `reconstruction/object_retry_001_visual_hull_041_auto_roi_3cam/object_retry_041_visual_hull.viewer.html`, `11692` voxels.
   - Interpretation: the automatic tool is usable and close to the hand ROI result in voxel count. K230 and OrangePi auto boxes are good. ESP32 remains broader because foreground/background changes include the hand/upper objects, which exposes the current limitation of pure background-difference segmentation in a cluttered scene.
+- Added regularized post-processing to `reconstruction/visual_hull.py` after the user suggested removing discrete points, smoothing the model, and ending with regular primitives:
+  - Added stronger in-ROI dark/low-saturation shadow cleanup while protecting pixels near the object color seed.
+  - Added constrained 3D opening via `--volume-open-iterations` to remove isolated voxels and small spikes.
+  - Added constrained majority smoothing via `--volume-smooth-iterations`; smoothing is clipped to the current visual hull support so it does not expand outside the silhouette boundary.
+  - Added `--regularize-shape none|auto|ellipsoid|cylinder|box`; auto uses the PCA shape prior to choose a primitive and keeps only the part inside the visual hull.
+  - Regularized test using auto ROI on `object_retry_041`:
+    - 2-of-3: raw `37773` voxels -> regularized `30948` voxels, auto primitive `cylinder`.
+    - 3-of-3: raw `11640` voxels -> regularized `11365` voxels, auto primitive `ellipsoid`.
+    - Viewers:
+      - `reconstruction/object_retry_001_visual_hull_041_auto_roi_regularized_2cam/object_retry_041_visual_hull.viewer.html`
+      - `reconstruction/object_retry_001_visual_hull_041_auto_roi_regularized_3cam/object_retry_041_visual_hull.viewer.html`
+  - Interpretation: this is the preferred direction for this hardware/environment. Since exact details are hard, generate a stable approximate silhouette volume, remove disconnected noise, then regularize toward simple shapes while respecting the multi-view boundary.
 
 Git sync:
 
