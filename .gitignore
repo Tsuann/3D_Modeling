@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+
+capture_console/.venv/
+capture_console/captures/
+
+.DS_Store
+Thumbs.db

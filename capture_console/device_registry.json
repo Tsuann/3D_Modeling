@@ -1,0 +1,26 @@
+{
+  "devices": [
+    {
+      "camera_id": "cam_esp32s3",
+      "name": "ESP32-S3 OV3660",
+      "type": "esp32s3_ov3660",
+      "base_url": "http://192.168.31.250",
+      "enabled": true
+    },
+    {
+      "camera_id": "cam_k230",
+      "name": "K230 Camera",
+      "type": "k230_micropython",
+      "base_url": "http://192.168.31.92",
+      "enabled": true
+    },
+    {
+      "camera_id": "cam_orangepi",
+      "name": "OrangePi USB Camera",
+      "type": "orangepi_usb",
+      "base_url": "http://192.168.1.103",
+      "enabled": false
+    }
+  ]
+}
+
