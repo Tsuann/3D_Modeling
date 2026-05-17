@@ -11,6 +11,7 @@ __pycache__/
 calibration/output*/
 datasets/object_*/
 reconstruction/object_*/
+reconstruction/auto_foreground_roi*/
 
 *.db
 *.ply

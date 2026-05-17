@@ -577,6 +577,20 @@ Visual hull update after explicit empty-background capture:
     - 3-of-3 output: `reconstruction/object_retry_001_visual_hull_041_emptybg_boxroi_tight_3cam/object_retry_041_visual_hull.viewer.html`, `10095` voxels.
     - 3-of-3 camera support ratios: ESP32 about `0.961`, K230 about `0.959`, OrangePi about `0.969`.
   - Interpretation: per-camera object ROI is clearly feasible and is currently the best low-cost improvement. It cuts image-edge clutter before 3D carving while preserving the object and its local shadow. Remaining errors are mostly inside-box background/shadow leakage, especially in ESP32 and K230.
+- Added automatic foreground/ROI detection tool:
+  - New script: `reconstruction/auto_foreground_roi.py`.
+  - Purpose: identify the changed foreground object region from a fixed-camera target frame and an empty-background frame without training a category detector.
+  - Method: background difference, optional shadow suppression, centered trusted region, connected-component scoring, ROI box extraction, masks, overlays, and `roi_config.json` output compatible with `visual_hull.py --roi-config`.
+  - Example command:
+    - `E:\Python\python.exe reconstruction\auto_foreground_roi.py --dataset-dir datasets\object_retry_001 --captures-dir capture_console\captures --session-id object_retry_041 --background-session background_empty_001 --output-dir reconstruction\auto_foreground_roi_041_center --threshold 30 --suppress-shadows --shadow-drop 24 --roi-pad 28 --center-roi-x 0.88 --center-roi-y 0.82 --keep-edge-components`
+  - Auto ROI result for `object_retry_041`:
+    - ESP32 ROI: `x=10, y=15, width=362, height=287`.
+    - K230 ROI: `x=268, y=201, width=435, height=247`.
+    - OrangePi ROI: `x=172, y=284, width=508, height=399`.
+  - Auto ROI visual hull runs:
+    - 2-of-3 output: `reconstruction/object_retry_001_visual_hull_041_auto_roi_2cam/object_retry_041_visual_hull.viewer.html`, `37817` voxels.
+    - 3-of-3 output: `reconstruction/object_retry_001_visual_hull_041_auto_roi_3cam/object_retry_041_visual_hull.viewer.html`, `11692` voxels.
+  - Interpretation: the automatic tool is usable and close to the hand ROI result in voxel count. K230 and OrangePi auto boxes are good. ESP32 remains broader because foreground/background changes include the hand/upper objects, which exposes the current limitation of pure background-difference segmentation in a cluttered scene.
 
 Git sync:
 
