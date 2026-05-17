@@ -1,0 +1,1 @@
+"""OrangePi USB camera node."""

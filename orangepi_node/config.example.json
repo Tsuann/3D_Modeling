@@ -1,0 +1,12 @@
+{
+  "camera_id": "cam_orangepi",
+  "model": "orangepi_usb_opencv",
+  "host": "0.0.0.0",
+  "port": 8080,
+  "camera_index": 0,
+  "width": 1280,
+  "height": 720,
+  "jpeg_quality": 95,
+  "warmup_frames": 3,
+  "capture_backend": "auto"
+}

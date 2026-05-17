@@ -309,6 +309,35 @@ OrangePi plan:
 - Implement equivalent status, capture, upload workflow.
 - USB camera likely becomes the most stable/high-quality early reference camera.
 
+OrangePi preparation on 2026-05-17:
+
+- Created `orangepi_node` for the OrangePi 5 Ultra Linux desktop environment.
+- Added a FastAPI + OpenCV USB camera node prototype:
+  - `orangepi_node/orangepi_camera_node/app.py`
+  - `orangepi_node/config.json`
+  - `orangepi_node/config.example.json`
+  - `orangepi_node/requirements.txt`
+  - `orangepi_node/run.sh`
+  - `orangepi_node/README.md`
+  - `orangepi_node/ORANGEPI_CODEX_HANDOFF.md`
+- OrangePi node contract matches the other devices: `GET /status`, `POST /capture`, JPEG upload to Windows `/api/upload`.
+- Default OrangePi service URL will be `http://ORANGEPI_IP:8080`.
+- Default OrangePi capture config: `camera_id=cam_orangepi`, `camera_index=0`, `1280x720`, JPEG quality `95`, warmup frames `3`.
+- Recommended OrangePi first steps:
+  1. Clone/pull `https://github.com/Tsuann/3D_Modeling.git`.
+  2. Open `orangepi_node/ORANGEPI_CODEX_HANDOFF.md` in VS Code/Codex.
+  3. Install `python3-opencv`, `v4l-utils`, FastAPI, and Uvicorn.
+  4. Run `python -m orangepi_camera_node.app`.
+  5. Test `curl http://127.0.0.1:8080/status`.
+  6. Enable `cam_orangepi` in Windows `capture_console/device_registry.json` once the OrangePi IP is known.
+- OrangePi node has passed local syntax compile on Windows, but has not yet been validated on OrangePi hardware or with a real USB camera.
+
+Git sync:
+
+- GitHub repository: `https://github.com/Tsuann/3D_Modeling.git`
+- Branch: `main`
+- Captured images and virtual environments are intentionally ignored by `.gitignore`.
+
 ## Next Milestones
 
 1. ESP32-S3 Arduino device endpoint prototype.
