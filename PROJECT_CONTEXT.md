@@ -603,6 +603,18 @@ Visual hull update after explicit empty-background capture:
       - `reconstruction/object_retry_001_visual_hull_041_auto_roi_regularized_2cam/object_retry_041_visual_hull.viewer.html`
       - `reconstruction/object_retry_001_visual_hull_041_auto_roi_regularized_3cam/object_retry_041_visual_hull.viewer.html`
   - Interpretation: this is the preferred direction for this hardware/environment. Since exact details are hard, generate a stable approximate silhouette volume, remove disconnected noise, then regularize toward simple shapes while respecting the multi-view boundary.
+- Added camera subset support to `reconstruction/visual_hull.py`:
+  - New argument: `--cameras cam_k230,cam_orangepi` or any comma-separated subset with at least two cameras.
+  - Tested excluding ESP32 on `object_retry_041` with auto ROI, regularization, and K230+OrangePi only:
+    - Command used `--cameras cam_k230,cam_orangepi --min-cameras 2`.
+    - Output: `reconstruction/object_retry_001_visual_hull_041_k230_orangepi_regularized/object_retry_041_visual_hull.viewer.html`
+    - Result: raw `15308` voxels -> regularized `14885` voxels, auto primitive `ellipsoid`.
+    - K230 support ratio about `0.942`; OrangePi support ratio about `0.967`.
+    - PCA extents about `0.206 x 0.144 x 0.119 m`.
+  - Comparison:
+    - Three-camera strict regularized result had `11365` voxels and PCA extents about `0.172 x 0.140 x 0.116 m`.
+    - K230+OrangePi only is more complete in the long direction but has less geometric constraint.
+    - ESP32 adds noisy masks/ROI but also provides extra viewpoint constraint; current best interpretation is to treat ESP32 as a low-confidence support camera rather than a hard veto camera.
 
 Git sync:
 

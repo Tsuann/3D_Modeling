@@ -17,6 +17,16 @@ def read_json(path: Path) -> dict[str, Any]:
         return json.load(file)
 
 
+def parse_cameras(value: str) -> tuple[str, ...]:
+    selected = tuple(camera.strip() for camera in value.split(",") if camera.strip())
+    unknown = sorted(set(selected) - set(CAMERAS))
+    if unknown:
+        raise argparse.ArgumentTypeError(f"Unknown camera ids: {', '.join(unknown)}")
+    if len(selected) < 2:
+        raise argparse.ArgumentTypeError("At least two cameras are required.")
+    return selected
+
+
 def resolve_image_path(dataset_dir: Path, captures_dir: Path, session_id: str, camera_id: str) -> Path:
     dataset_path = dataset_dir / "images" / f"{session_id}_{camera_id}.jpg"
     if dataset_path.exists():
@@ -601,7 +611,9 @@ def camera_support(points: np.ndarray, masks: dict[str, np.ndarray], cameras: di
 
 
 def main() -> int:
+    global CAMERAS
     parser = argparse.ArgumentParser(description="Build a rough calibrated multi-view visual hull from silhouettes.")
+    parser.add_argument("--cameras", default="cam_esp32s3,cam_k230,cam_orangepi", type=parse_cameras, help="Comma-separated camera ids to use.")
     parser.add_argument("--dataset-dir", default="datasets/object_retry_001", type=Path)
     parser.add_argument("--captures-dir", default="capture_console/captures", type=Path)
     parser.add_argument("--calibration-dir", default="datasets/object_retry_001/calibration", type=Path)
@@ -628,6 +640,7 @@ def main() -> int:
     parser.add_argument("--volume-open-iterations", type=int, default=0, help="Constrained 3D opening iterations to remove isolated voxels and small spikes.")
     parser.add_argument("--regularize-shape", default="none", choices=("none", "auto", "ellipsoid", "cylinder", "box"), help="Fit a regular primitive and keep only the part inside the visual hull boundary.")
     args = parser.parse_args()
+    CAMERAS = args.cameras
 
     sessions = dataset_sessions(args.dataset_dir)
     cameras = {camera_id: camera_data(args.calibration_dir, camera_id) for camera_id in CAMERAS}
@@ -703,6 +716,7 @@ def main() -> int:
         "ok": len(points) > 0,
         "session_id": args.session_id,
         "background_session": args.background_session,
+        "cameras": list(CAMERAS),
         "output_ply": str(output_ply),
         "point_count": int(len(points)),
         "center_reference_m": center.tolist(),
