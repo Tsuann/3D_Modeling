@@ -18,8 +18,8 @@
       "camera_id": "cam_orangepi",
       "name": "OrangePi USB Camera",
       "type": "orangepi_usb",
-      "base_url": "http://192.168.1.103",
-      "enabled": false
+      "base_url": "http://192.168.31.38:8080",
+      "enabled": true
     }
   ]
 }

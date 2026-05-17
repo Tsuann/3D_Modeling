@@ -5,5 +5,16 @@ __pycache__/
 capture_console/.venv/
 capture_console/captures/
 
+__pycache__/
+*/__pycache__/
+
+calibration/output*/
+datasets/object_*/
+reconstruction/object_*/
+
+*.db
+*.ply
+*.viewer.html
+
 .DS_Store
 Thumbs.db

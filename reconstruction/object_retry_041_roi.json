@@ -1,0 +1,23 @@
+{
+  "description": "Hand-tuned object ROI boxes for object_retry_041. Areas outside each box are ignored during foreground masking.",
+  "cameras": {
+    "cam_esp32s3": {
+      "x": 50,
+      "y": 110,
+      "width": 390,
+      "height": 270
+    },
+    "cam_k230": {
+      "x": 220,
+      "y": 235,
+      "width": 560,
+      "height": 220
+    },
+    "cam_orangepi": {
+      "x": 160,
+      "y": 250,
+      "width": 600,
+      "height": 410
+    }
+  }
+}
